@@ -9,6 +9,7 @@
 #define ID_BUTTON_MP3   3
 #define ID_EDIT_OUTPUT  4
 #define ID_BUTTON_CLEAR 5
+#define ID_BUTTON_OPEN  6
 
 // Append text no campo multiline
 void AppendText(HWND hEdit, const char* newText) {
@@ -27,7 +28,7 @@ void CreateDirectoryIfNotExists(const std::string& path) {
 
 // Função principal de download
 void RunYtDlp(HWND hwnd, const char* url, const char* format) {
-    // Pega caminho da área de trabalho
+    // Caminho da área de trabalho
     char desktopPath[MAX_PATH];
     SHGetFolderPathA(NULL, CSIDL_DESKTOPDIRECTORY, NULL, 0, desktopPath);
 
@@ -141,6 +142,9 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             CreateWindow("BUTTON", "MP3", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
                 670, 20, 80, 25, hwnd, (HMENU)ID_BUTTON_MP3, NULL, NULL);
 
+            CreateWindow("BUTTON", "ABRIR PASTA", WS_TABSTOP | WS_VISIBLE | WS_CHILD,
+                420, 55, 150, 25, hwnd, (HMENU)ID_BUTTON_OPEN, NULL, NULL);
+
             CreateWindow("BUTTON", "LIMPAR", WS_TABSTOP | WS_VISIBLE | WS_CHILD,
                 580, 55, 170, 25, hwnd, (HMENU)ID_BUTTON_CLEAR, NULL, NULL);
 
@@ -179,6 +183,13 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 SetWindowText(GetDlgItem(hwnd, ID_EDIT_URL), "");
                 SetWindowText(GetDlgItem(hwnd, ID_EDIT_OUTPUT), "");
             }
+            else if (LOWORD(wParam) == ID_BUTTON_OPEN) {
+                // Abre pasta MUSICAS
+                char desktopPath[MAX_PATH];
+                SHGetFolderPathA(NULL, CSIDL_DESKTOPDIRECTORY, NULL, 0, desktopPath);
+                std::string musicDir = std::string(desktopPath) + "\\MUSICAS";
+                ShellExecuteA(NULL, "open", musicDir.c_str(), NULL, NULL, SW_SHOWNORMAL);
+            }
             break;
 
         case WM_DESTROY:
@@ -201,16 +212,23 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
 
     RegisterClass(&wc);
 
+    // Centraliza na tela
+    int width = 780;
+    int height = 350;
+    int x = (GetSystemMetrics(SM_CXSCREEN) - width) / 2;
+    int y = (GetSystemMetrics(SM_CYSCREEN) - height) / 2;
+
     HWND hwnd = CreateWindowEx(
         0, CLASS_NAME, "YT Baixar",
         WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, 780, 350,
+        x, y, width, height,
         NULL, NULL, hInstance, NULL
     );
 
     if (hwnd == NULL) return 0;
 
-    ShowWindow(hwnd, nCmdShow);
+    ShowWindow(hwnd, SW_SHOW);
+    SetForegroundWindow(hwnd); // Para vir ao topo
 
     MSG msg = {};
     while (GetMessage(&msg, NULL, 0, 0)) {
