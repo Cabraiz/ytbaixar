@@ -1,38 +1,27 @@
 #include <windows.h>
 #include <cstdio>
 #include <string>
-#include <vector>
 
 // IDs dos controles
-#define ID_EDIT_URL   1
-#define ID_BUTTON_MP4 2
-#define ID_BUTTON_MP3 3
-#define ID_EDIT_LOG   4
+#define ID_EDIT_URL     1
+#define ID_BUTTON_MP4   2
+#define ID_BUTTON_MP3   3
+#define ID_EDIT_OUTPUT  4
 #define ID_BUTTON_CLEAR 5
 
-// Armazena as últimas 5 saídas
-std::vector<std::string> lastLogs;
+// Função auxiliar para rodar yt-dlp
+void RunYtDlp(HWND hwnd, const char* url, const char* format) {
+    char commandLine[2048];
 
-// Atualiza o campo de log
-void UpdateLogWindow(HWND hwnd) {
-    HWND hLog = GetDlgItem(hwnd, ID_EDIT_LOG);
-    std::string combined;
-
-    for (auto it = lastLogs.rbegin(); it != lastLogs.rend(); ++it) {
-        combined += *it;
-        combined += "\r\n---\r\n";
+    if (strcmp(format, "mp3") == 0) {
+        snprintf(commandLine, sizeof(commandLine),
+            "yt-dlp.exe -x --audio-format mp3 %s", url);
+    } else {
+        snprintf(commandLine, sizeof(commandLine),
+            "yt-dlp.exe %s", url);
     }
 
-    SetWindowText(hLog, combined.c_str());
-}
-
-// Função auxiliar para rodar yt-dlp
-void RunYtDlp(HWND hwnd, const char* url) {
-    char commandLine[2048];
-    snprintf(commandLine, sizeof(commandLine),
-        "yt-dlp.exe %s", url);
-
-    // Caminho onde está o exe
+    // Obtém o diretório onde o EXE está
     char exePath[MAX_PATH];
     GetModuleFileName(NULL, exePath, MAX_PATH);
     for (int i = strlen(exePath) - 1; i >= 0; --i) {
@@ -70,7 +59,7 @@ void RunYtDlp(HWND hwnd, const char* url) {
             &si,
             &pi))
     {
-        MessageBox(hwnd, "Erro ao iniciar yt-dlp.\nExecute como administrador e verifique o caminho.", "Erro", MB_OK | MB_ICONERROR);
+        MessageBox(hwnd, "Erro ao iniciar yt-dlp. Execute como administrador e verifique o caminho.", "Erro", MB_OK | MB_ICONERROR);
         return;
     }
 
@@ -94,12 +83,8 @@ void RunYtDlp(HWND hwnd, const char* url) {
     CloseHandle(pi.hThread);
     CloseHandle(hChildStd_OUT_Rd);
 
-    // Adiciona ao histórico
-    lastLogs.push_back(output);
-    if (lastLogs.size() > 5)
-        lastLogs.erase(lastLogs.begin());
-
-    UpdateLogWindow(hwnd);
+    // Mostra a saída no campo de texto de log
+    SetWindowText(GetDlgItem(hwnd, ID_EDIT_OUTPUT), output.c_str());
 }
 
 // Callback da janela
@@ -107,51 +92,66 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
     switch (uMsg) {
         case WM_CREATE:
         {
-            // Botão LIMPAR
-            CreateWindow(
-                "BUTTON", "LIMPAR",
-                WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
-                20, 10, 80, 25,
-                hwnd, (HMENU)ID_BUTTON_CLEAR, NULL, NULL
-            );
-
-            // Campo URL
+            // Campo de URL
             HWND hEditUrl = CreateWindowEx(
                 0, "EDIT", "",
                 WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
-                110, 10, 400, 25,
+                20, 20, 550, 25,
                 hwnd, (HMENU)ID_EDIT_URL, NULL, NULL
             );
-            SendMessage(hEditUrl, EM_LIMITTEXT, (WPARAM)2048, 0);
 
-            // Botões MP4 e MP3
-            CreateWindow("BUTTON", "MP4",
+            // Botão MP4
+            CreateWindow(
+                "BUTTON", "MP4",
                 WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
-                520, 10, 80, 25,
-                hwnd, (HMENU)ID_BUTTON_MP4, NULL, NULL);
-
-            CreateWindow("BUTTON", "MP3",
-                WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
-                610, 10, 80, 25,
-                hwnd, (HMENU)ID_BUTTON_MP3, NULL, NULL);
-
-            // Campo de LOG multilinha
-            HWND hEditLog = CreateWindowEx(
-                WS_EX_CLIENTEDGE, "EDIT", "",
-                WS_CHILD | WS_VISIBLE | WS_VSCROLL |
-                ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
-                20, 50, 670, 320,
-                hwnd, (HMENU)ID_EDIT_LOG, NULL, NULL
+                580, 20, 80, 25,
+                hwnd, (HMENU)ID_BUTTON_MP4, NULL, NULL
             );
+
+            // Botão MP3
+            CreateWindow(
+                "BUTTON", "MP3",
+                WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
+                670, 20, 80, 25,
+                hwnd, (HMENU)ID_BUTTON_MP3, NULL, NULL
+            );
+
+            // Botão LIMPAR
+            CreateWindow(
+                "BUTTON", "LIMPAR",
+                WS_TABSTOP | WS_VISIBLE | WS_CHILD,
+                580, 55, 170, 25,
+                hwnd, (HMENU)ID_BUTTON_CLEAR, NULL, NULL
+            );
+
+            // Campo de log de saída
+            HWND hEditOutput = CreateWindowEx(
+                WS_EX_CLIENTEDGE, "EDIT", "",
+                WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL |
+                ES_LEFT | ES_MULTILINE | ES_AUTOVSCROLL | ES_READONLY,
+                20, 90, 730, 200,
+                hwnd, (HMENU)ID_EDIT_OUTPUT, NULL, NULL
+            );
+
+            // Fonte monoespaçada para melhor leitura
+            HFONT hFont = CreateFont(
+                -16, 0, 0, 0,
+                FW_NORMAL,
+                FALSE, FALSE, FALSE,
+                DEFAULT_CHARSET,
+                OUT_OUTLINE_PRECIS,
+                CLIP_DEFAULT_PRECIS,
+                CLEARTYPE_QUALITY,
+                VARIABLE_PITCH,
+                TEXT("Consolas")
+            );
+            SendMessage(hEditUrl, WM_SETFONT, (WPARAM)hFont, TRUE);
+            SendMessage(hEditOutput, WM_SETFONT, (WPARAM)hFont, TRUE);
         }
         break;
 
         case WM_COMMAND:
-            if (LOWORD(wParam) == ID_BUTTON_CLEAR) {
-                // Limpa o campo de URL
-                SetWindowText(GetDlgItem(hwnd, ID_EDIT_URL), "");
-            }
-            else if (LOWORD(wParam) == ID_BUTTON_MP4 || LOWORD(wParam) == ID_BUTTON_MP3) {
+            if (LOWORD(wParam) == ID_BUTTON_MP4 || LOWORD(wParam) == ID_BUTTON_MP3) {
                 char buffer[2048];
                 GetWindowText(GetDlgItem(hwnd, ID_EDIT_URL), buffer, sizeof(buffer));
 
@@ -160,7 +160,16 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                     return 0;
                 }
 
-                RunYtDlp(hwnd, buffer);
+                if (LOWORD(wParam) == ID_BUTTON_MP4) {
+                    RunYtDlp(hwnd, buffer, "mp4");
+                }
+                else if (LOWORD(wParam) == ID_BUTTON_MP3) {
+                    RunYtDlp(hwnd, buffer, "mp3");
+                }
+            }
+            else if (LOWORD(wParam) == ID_BUTTON_CLEAR) {
+                SetWindowText(GetDlgItem(hwnd, ID_EDIT_URL), "");
+                SetWindowText(GetDlgItem(hwnd, ID_EDIT_OUTPUT), "");
             }
             break;
 
@@ -175,7 +184,7 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
 }
 
 int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
-    const char CLASS_NAME[] = "MinhaJanela";
+    const char CLASS_NAME[] = "YTBaixarJanela";
 
     WNDCLASS wc = {};
     wc.lpfnWndProc = WindowProc;
@@ -187,7 +196,7 @@ int WINAPI WinMain(HINSTANCE hInstance, HINSTANCE, LPSTR, int nCmdShow) {
     HWND hwnd = CreateWindowEx(
         0, CLASS_NAME, "YT Baixar",
         WS_OVERLAPPEDWINDOW,
-        CW_USEDEFAULT, CW_USEDEFAULT, 720, 440,
+        CW_USEDEFAULT, CW_USEDEFAULT, 780, 350,
         NULL, NULL, hInstance, NULL
     );
 
