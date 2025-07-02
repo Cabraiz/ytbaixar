@@ -21,7 +21,7 @@ void RunYtDlp(HWND hwnd, const char* url, const char* format) {
             "yt-dlp.exe %s", url);
     }
 
-    // Obtém o diretório onde o EXE está
+    // Obtém diretório do EXE
     char exePath[MAX_PATH];
     GetModuleFileName(NULL, exePath, MAX_PATH);
     for (int i = strlen(exePath) - 1; i >= 0; --i) {
@@ -31,6 +31,10 @@ void RunYtDlp(HWND hwnd, const char* url, const char* format) {
         }
     }
     const char* workingDir = exePath;
+
+    // DESABILITA botões MP4 e MP3
+    EnableWindow(GetDlgItem(hwnd, ID_BUTTON_MP4), FALSE);
+    EnableWindow(GetDlgItem(hwnd, ID_BUTTON_MP3), FALSE);
 
     SECURITY_ATTRIBUTES saAttr = {};
     saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
@@ -60,6 +64,9 @@ void RunYtDlp(HWND hwnd, const char* url, const char* format) {
             &pi))
     {
         MessageBox(hwnd, "Erro ao iniciar yt-dlp. Execute como administrador e verifique o caminho.", "Erro", MB_OK | MB_ICONERROR);
+        // REABILITA botões caso falhe
+        EnableWindow(GetDlgItem(hwnd, ID_BUTTON_MP4), TRUE);
+        EnableWindow(GetDlgItem(hwnd, ID_BUTTON_MP3), TRUE);
         return;
     }
 
@@ -83,9 +90,14 @@ void RunYtDlp(HWND hwnd, const char* url, const char* format) {
     CloseHandle(pi.hThread);
     CloseHandle(hChildStd_OUT_Rd);
 
-    // Mostra a saída no campo de texto de log
+    // Atualiza campo de log
     SetWindowText(GetDlgItem(hwnd, ID_EDIT_OUTPUT), output.c_str());
+
+    // REABILITA botões depois de terminar
+    EnableWindow(GetDlgItem(hwnd, ID_BUTTON_MP4), TRUE);
+    EnableWindow(GetDlgItem(hwnd, ID_BUTTON_MP3), TRUE);
 }
+
 
 // Callback da janela
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
