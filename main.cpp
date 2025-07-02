@@ -1,6 +1,7 @@
 #include <windows.h>
 #include <cstdio>
 #include <string>
+#include <shlobj.h>
 
 // IDs dos controles
 #define ID_EDIT_URL     1
@@ -9,19 +10,43 @@
 #define ID_EDIT_OUTPUT  4
 #define ID_BUTTON_CLEAR 5
 
-// Função auxiliar para rodar yt-dlp
+// Append text no campo multiline
+void AppendText(HWND hEdit, const char* newText) {
+    int length = GetWindowTextLength(hEdit);
+    SendMessage(hEdit, EM_SETSEL, length, length);
+    SendMessage(hEdit, EM_REPLACESEL, FALSE, (LPARAM)newText);
+}
+
+// Cria diretório se não existir
+void CreateDirectoryIfNotExists(const std::string& path) {
+    DWORD attrs = GetFileAttributesA(path.c_str());
+    if (attrs == INVALID_FILE_ATTRIBUTES) {
+        CreateDirectoryA(path.c_str(), NULL);
+    }
+}
+
+// Função principal de download
 void RunYtDlp(HWND hwnd, const char* url, const char* format) {
-    char commandLine[2048];
+    // Pega caminho da área de trabalho
+    char desktopPath[MAX_PATH];
+    SHGetFolderPathA(NULL, CSIDL_DESKTOPDIRECTORY, NULL, 0, desktopPath);
+
+    std::string musicDir = std::string(desktopPath) + "\\MUSICAS";
+    CreateDirectoryIfNotExists(musicDir);
+
+    char commandLine[4096];
 
     if (strcmp(format, "mp3") == 0) {
         snprintf(commandLine, sizeof(commandLine),
-            "yt-dlp.exe -x --audio-format mp3 %s", url);
+            "yt-dlp.exe -o \"%s\\%%(title)s.%%(ext)s\" -x --audio-format mp3 %s",
+            musicDir.c_str(), url);
     } else {
         snprintf(commandLine, sizeof(commandLine),
-            "yt-dlp.exe %s", url);
+            "yt-dlp.exe -o \"%s\\%%(title)s.%%(ext)s\" %s",
+            musicDir.c_str(), url);
     }
 
-    // Obtém diretório do EXE
+    // Diretório do exe
     char exePath[MAX_PATH];
     GetModuleFileName(NULL, exePath, MAX_PATH);
     for (int i = strlen(exePath) - 1; i >= 0; --i) {
@@ -32,9 +57,12 @@ void RunYtDlp(HWND hwnd, const char* url, const char* format) {
     }
     const char* workingDir = exePath;
 
-    // DESABILITA botões MP4 e MP3
+    // Desabilita botões
     EnableWindow(GetDlgItem(hwnd, ID_BUTTON_MP4), FALSE);
     EnableWindow(GetDlgItem(hwnd, ID_BUTTON_MP3), FALSE);
+
+    HWND outputCtrl = GetDlgItem(hwnd, ID_EDIT_OUTPUT);
+    SetWindowText(outputCtrl, "Iniciando download...\r\n");
 
     SECURITY_ATTRIBUTES saAttr = {};
     saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
@@ -64,7 +92,6 @@ void RunYtDlp(HWND hwnd, const char* url, const char* format) {
             &pi))
     {
         MessageBox(hwnd, "Erro ao iniciar yt-dlp. Execute como administrador e verifique o caminho.", "Erro", MB_OK | MB_ICONERROR);
-        // REABILITA botões caso falhe
         EnableWindow(GetDlgItem(hwnd, ID_BUTTON_MP4), TRUE);
         EnableWindow(GetDlgItem(hwnd, ID_BUTTON_MP3), TRUE);
         return;
@@ -72,16 +99,16 @@ void RunYtDlp(HWND hwnd, const char* url, const char* format) {
 
     CloseHandle(hChildStd_OUT_Wr);
 
-    char buffer[4096];
+    char buffer[512];
     DWORD dwRead;
-    std::string output;
 
+    // Leitura em tempo real
     for (;;) {
         BOOL success = ReadFile(hChildStd_OUT_Rd, buffer, sizeof(buffer) - 1, &dwRead, NULL);
         if (!success || dwRead == 0)
             break;
         buffer[dwRead] = '\0';
-        output += buffer;
+        AppendText(outputCtrl, buffer);
     }
 
     WaitForSingleObject(pi.hProcess, INFINITE);
@@ -90,21 +117,17 @@ void RunYtDlp(HWND hwnd, const char* url, const char* format) {
     CloseHandle(pi.hThread);
     CloseHandle(hChildStd_OUT_Rd);
 
-    // Atualiza campo de log
-    SetWindowText(GetDlgItem(hwnd, ID_EDIT_OUTPUT), output.c_str());
+    AppendText(outputCtrl, "\r\nDownload concluído.\r\n");
 
-    // REABILITA botões depois de terminar
     EnableWindow(GetDlgItem(hwnd, ID_BUTTON_MP4), TRUE);
     EnableWindow(GetDlgItem(hwnd, ID_BUTTON_MP3), TRUE);
 }
-
 
 // Callback da janela
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
         case WM_CREATE:
         {
-            // Campo de URL
             HWND hEditUrl = CreateWindowEx(
                 0, "EDIT", "",
                 WS_CHILD | WS_VISIBLE | WS_BORDER | ES_AUTOHSCROLL,
@@ -112,31 +135,15 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 hwnd, (HMENU)ID_EDIT_URL, NULL, NULL
             );
 
-            // Botão MP4
-            CreateWindow(
-                "BUTTON", "MP4",
-                WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
-                580, 20, 80, 25,
-                hwnd, (HMENU)ID_BUTTON_MP4, NULL, NULL
-            );
+            CreateWindow("BUTTON", "MP4", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
+                580, 20, 80, 25, hwnd, (HMENU)ID_BUTTON_MP4, NULL, NULL);
 
-            // Botão MP3
-            CreateWindow(
-                "BUTTON", "MP3",
-                WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
-                670, 20, 80, 25,
-                hwnd, (HMENU)ID_BUTTON_MP3, NULL, NULL
-            );
+            CreateWindow("BUTTON", "MP3", WS_TABSTOP | WS_VISIBLE | WS_CHILD | BS_DEFPUSHBUTTON,
+                670, 20, 80, 25, hwnd, (HMENU)ID_BUTTON_MP3, NULL, NULL);
 
-            // Botão LIMPAR
-            CreateWindow(
-                "BUTTON", "LIMPAR",
-                WS_TABSTOP | WS_VISIBLE | WS_CHILD,
-                580, 55, 170, 25,
-                hwnd, (HMENU)ID_BUTTON_CLEAR, NULL, NULL
-            );
+            CreateWindow("BUTTON", "LIMPAR", WS_TABSTOP | WS_VISIBLE | WS_CHILD,
+                580, 55, 170, 25, hwnd, (HMENU)ID_BUTTON_CLEAR, NULL, NULL);
 
-            // Campo de log de saída
             HWND hEditOutput = CreateWindowEx(
                 WS_EX_CLIENTEDGE, "EDIT", "",
                 WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL |
@@ -145,17 +152,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
                 hwnd, (HMENU)ID_EDIT_OUTPUT, NULL, NULL
             );
 
-            // Fonte monoespaçada para melhor leitura
             HFONT hFont = CreateFont(
                 -16, 0, 0, 0,
-                FW_NORMAL,
-                FALSE, FALSE, FALSE,
-                DEFAULT_CHARSET,
-                OUT_OUTLINE_PRECIS,
-                CLIP_DEFAULT_PRECIS,
-                CLEARTYPE_QUALITY,
-                VARIABLE_PITCH,
-                TEXT("Consolas")
+                FW_NORMAL, FALSE, FALSE, FALSE,
+                DEFAULT_CHARSET, OUT_OUTLINE_PRECIS,
+                CLIP_DEFAULT_PRECIS, CLEARTYPE_QUALITY,
+                VARIABLE_PITCH, TEXT("Consolas")
             );
             SendMessage(hEditUrl, WM_SETFONT, (WPARAM)hFont, TRUE);
             SendMessage(hEditOutput, WM_SETFONT, (WPARAM)hFont, TRUE);
@@ -166,18 +168,12 @@ LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) 
             if (LOWORD(wParam) == ID_BUTTON_MP4 || LOWORD(wParam) == ID_BUTTON_MP3) {
                 char buffer[2048];
                 GetWindowText(GetDlgItem(hwnd, ID_EDIT_URL), buffer, sizeof(buffer));
-
                 if (strlen(buffer) == 0) {
                     MessageBox(hwnd, "Digite a URL primeiro.", "Aviso", MB_OK | MB_ICONWARNING);
                     return 0;
                 }
-
-                if (LOWORD(wParam) == ID_BUTTON_MP4) {
-                    RunYtDlp(hwnd, buffer, "mp4");
-                }
-                else if (LOWORD(wParam) == ID_BUTTON_MP3) {
-                    RunYtDlp(hwnd, buffer, "mp3");
-                }
+                if (LOWORD(wParam) == ID_BUTTON_MP4) RunYtDlp(hwnd, buffer, "mp4");
+                if (LOWORD(wParam) == ID_BUTTON_MP3) RunYtDlp(hwnd, buffer, "mp3");
             }
             else if (LOWORD(wParam) == ID_BUTTON_CLEAR) {
                 SetWindowText(GetDlgItem(hwnd, ID_EDIT_URL), "");
